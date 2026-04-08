@@ -44,7 +44,7 @@ export default function PhotoCapture({ photos, previewUrls, onCapture, onRemove 
               <button
                 type="button"
                 onClick={() => onRemove(index)}
-                className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-red-600"
               >
                 ×
               </button>

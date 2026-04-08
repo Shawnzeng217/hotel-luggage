@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { v4 as uuidv4 } from 'uuid'
@@ -8,6 +8,36 @@ import PhotoCapture from '@/components/PhotoCapture'
 import SignaturePad from '@/components/SignaturePad'
 
 type Step = 'info' | 'photos' | 'signature' | 'confirm'
+
+async function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      let { width, height } = img
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size < file.size) {
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+          } else {
+            resolve(file)
+          }
+        },
+        'image/jpeg',
+        quality,
+      )
+    }
+    img.src = URL.createObjectURL(file)
+  })
+}
 
 export default function NewCheckInPage() {
   const [step, setStep] = useState<Step>('info')
@@ -35,9 +65,21 @@ export default function NewCheckInPage() {
     }
   }, [previewUrls])
 
-  const handlePhotoCapture = (newFiles: File[]) => {
-    setPhotos((prev) => [...prev, ...newFiles])
-  }
+  // Warn before leaving if there's unsaved work
+  const isDirty = guestName.trim() !== '' || photos.length > 0 || signatureData !== null
+  useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+
+  const handlePhotoCapture = useCallback(async (newFiles: File[]) => {
+    const compressed = await Promise.all(newFiles.map((f) => compressImage(f)))
+    setPhotos((prev) => [...prev, ...compressed])
+  }, [])
 
   const handlePhotoRemove = (index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index))
@@ -74,10 +116,10 @@ export default function NewCheckInPage() {
         .from('luggage_records')
         .insert({
           voucher_token: voucherToken,
-          guest_name: guestName,
-          room_number: roomNumber,
+          guest_name: guestName.trim(),
+          room_number: roomNumber.trim(),
           item_count: itemCount,
-          notes: notes || null,
+          notes: notes.trim() || null,
           signature_url: signatureUrl,
           status: 'stored',
           created_by: user.id,
@@ -222,7 +264,7 @@ export default function NewCheckInPage() {
 
             <button
               onClick={() => setStep('photos')}
-              disabled={!guestName || !roomNumber}
+              disabled={!guestName.trim() || !roomNumber.trim()}
               className="w-full py-3 bg-[#007293] text-white font-medium rounded-xl hover:bg-[#007293]/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next: Take Photos →
@@ -287,6 +329,13 @@ export default function NewCheckInPage() {
                 <p className="text-sm text-[#002F61]/50">Hand device to guest for signature</p>
               </div>
 
+              {signatureData && (
+                <div className="mb-4 border border-[#002F61]/10 rounded-xl p-2 bg-white">
+                  <p className="text-xs text-[#002F61]/50 mb-1 text-center">Current signature</p>
+                  <img src={signatureData} alt="Current signature" className="h-16 mx-auto" />
+                </div>
+              )}
+
               <SignaturePad
                 onSave={(data) => {
                   setSignatureData(data)
@@ -294,6 +343,15 @@ export default function NewCheckInPage() {
                 }}
                 onClear={() => setSignatureData(null)}
               />
+
+              {signatureData && (
+                <button
+                  onClick={() => setStep('confirm')}
+                  className="w-full mt-3 py-3 bg-[#007293] text-white font-medium rounded-xl hover:bg-[#007293]/90 transition"
+                >
+                  Keep Current Signature →
+                </button>
+              )}
             </div>
 
             <button

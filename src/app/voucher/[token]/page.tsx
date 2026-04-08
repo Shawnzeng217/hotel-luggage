@@ -4,33 +4,16 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { QRCodeSVG } from 'qrcode.react'
-
-interface VoucherRecord {
-  id: string
-  voucher_token: string
-  guest_name: string
-  room_number: string
-  item_count: number
-  notes: string | null
-  signature_url: string | null
-  status: string
-  created_at: string
-  collected_at: string | null
-}
-
-interface VoucherPhoto {
-  id: string
-  photo_url: string
-  uploaded_at: string
-}
+import type { LuggageRecord, LuggagePhoto } from '@/lib/types'
 
 export default function VoucherPage() {
   const params = useParams()
   const token = params.token as string
-  const [record, setRecord] = useState<VoucherRecord | null>(null)
-  const [photos, setPhotos] = useState<VoucherPhoto[]>([])
+  const [record, setRecord] = useState<LuggageRecord | null>(null)
+  const [photos, setPhotos] = useState<LuggagePhoto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -145,7 +128,8 @@ export default function VoucherPage() {
                   key={photo.id}
                   src={photo.photo_url}
                   alt="Luggage"
-                  className="w-full h-36 object-cover rounded-xl border border-[#002F61]/10"
+                  className="w-full h-36 object-cover rounded-xl border border-[#002F61]/10 cursor-pointer active:opacity-70 transition"
+                  onClick={() => setLightboxSrc(photo.photo_url)}
                 />
               ))}
             </div>
@@ -174,7 +158,7 @@ export default function VoucherPage() {
         {record.signature_url && (
           <div className="glass-card p-6 space-y-3">
             <h3 className="font-semibold text-[#002F61] text-sm">Your Signature</h3>
-            <div className="bg-white rounded-xl p-3 border border-[#002F61]/10">
+            <div className="bg-white rounded-xl p-3 border border-[#002F61]/10 cursor-pointer active:opacity-70 transition" onClick={() => setLightboxSrc(record.signature_url!)}>
               <img src={record.signature_url} alt="Your signature" className="h-16 mx-auto" />
             </div>
           </div>
@@ -187,6 +171,21 @@ export default function VoucherPage() {
           </p>
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt="Preview"
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }

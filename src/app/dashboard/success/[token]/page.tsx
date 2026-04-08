@@ -2,7 +2,6 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { use } from 'react'
 
 export default function SuccessPage() {
   const params = useParams()

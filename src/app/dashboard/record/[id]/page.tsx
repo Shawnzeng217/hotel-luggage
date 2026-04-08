@@ -1,16 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { LuggageRecord, LuggagePhoto } from '@/lib/types'
 
 export default function RecordDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const recordId = params.id as string
   const [record, setRecord] = useState<LuggageRecord | null>(null)
   const [photos, setPhotos] = useState<LuggagePhoto[]>([])
   const [loading, setLoading] = useState(true)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const [collecting, setCollecting] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -25,6 +28,29 @@ export default function RecordDetailPage() {
     }
     load()
   }, [recordId])
+
+  const markCollected = async () => {
+    if (!record) return
+    const confirmed = window.confirm(
+      `Confirm collection?\n\nRoom ${record.room_number} · ${record.guest_name}\n${record.item_count} item(s)\n\nThis cannot be undone.`
+    )
+    if (!confirmed) return
+
+    setCollecting(true)
+    const { error } = await supabase
+      .from('luggage_records')
+      .update({ status: 'collected', collected_at: new Date().toISOString() })
+      .eq('id', record.id)
+
+    if (error) {
+      alert('Failed to update status. Please try again.')
+      setCollecting(false)
+      return
+    }
+
+    setRecord({ ...record, status: 'collected', collected_at: new Date().toISOString() })
+    setCollecting(false)
+  }
 
   if (loading) {
     return (
@@ -109,7 +135,8 @@ export default function RecordDetailPage() {
                   key={photo.id}
                   src={photo.photo_url}
                   alt="Luggage"
-                  className="w-full h-40 object-cover rounded-xl border border-[#002F61]/10"
+                  className="w-full h-40 object-cover rounded-xl border border-[#002F61]/10 cursor-pointer active:opacity-70 transition"
+                  onClick={() => setLightboxSrc(photo.photo_url)}
                 />
               ))}
             </div>
@@ -120,12 +147,38 @@ export default function RecordDetailPage() {
         {record.signature_url && (
           <div className="glass-card p-6 space-y-3">
             <h3 className="font-semibold text-[#002F61]">Guest Signature</h3>
-            <div className="bg-white rounded-xl p-3 border border-[#002F61]/10">
+            <div className="bg-white rounded-xl p-3 border border-[#002F61]/10 cursor-pointer active:opacity-70 transition" onClick={() => setLightboxSrc(record.signature_url!)}>
               <img src={record.signature_url} alt="Signature" className="h-20 mx-auto" />
             </div>
           </div>
         )}
+
+        {/* Mark Collected button */}
+        {record.status === 'stored' && (
+          <button
+            onClick={markCollected}
+            disabled={collecting}
+            className="w-full py-3 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 active:bg-green-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {collecting ? 'Updating...' : '✅ Mark as Collected'}
+          </button>
+        )}
       </div>
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt="Preview"
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }

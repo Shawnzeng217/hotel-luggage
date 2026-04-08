@@ -1,28 +1,63 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { LuggageRecord } from '@/lib/types'
 
+const PAGE_SIZE = 20
+
 export default function DashboardPage() {
   const [records, setRecords] = useState<LuggageRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
   const router = useRouter()
   const supabase = createClient()
 
-  useEffect(() => {
-    loadRecords()
-  }, [])
+  const loadRecords = useCallback(async (pageNum = 0, append = false) => {
+    const from = pageNum * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
 
-  const loadRecords = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('luggage_records')
       .select('*')
       .order('created_at', { ascending: false })
+      .range(from, to)
 
-    setRecords(data || [])
+    if (error) {
+      console.error('Failed to load records:', error)
+      if (!append) setLoading(false)
+      return
+    }
+
+    const newData = data || []
+    setHasMore(newData.length === PAGE_SIZE)
+
+    if (append) {
+      setRecords(prev => [...prev, ...newData])
+    } else {
+      setRecords(newData)
+    }
     setLoading(false)
+  }, [supabase])
+
+  useEffect(() => {
+    loadRecords()
+  }, [loadRecords])
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadRecords(0, false)
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [loadRecords])
+
+  const loadMore = () => {
+    const next = page + 1
+    setPage(next)
+    loadRecords(next, true)
   }
 
   const handleLogout = async () => {
@@ -37,10 +72,15 @@ export default function DashboardPage() {
     )
     if (!confirmed) return
 
-    await supabase
+    const { error } = await supabase
       .from('luggage_records')
       .update({ status: 'collected', collected_at: new Date().toISOString() })
       .eq('id', id)
+
+    if (error) {
+      alert('Failed to update status. Please try again.')
+      return
+    }
 
     loadRecords()
   }
@@ -54,7 +94,10 @@ export default function DashboardPage() {
   })
 
   const storedCount = records.filter(r => r.status === 'stored').length
-  const collectedCount = records.filter(r => r.status === 'collected').length
+  const todayStr = new Date().toDateString()
+  const collectedTodayCount = records.filter(r =>
+    r.status === 'collected' && r.collected_at && new Date(r.collected_at).toDateString() === todayStr
+  ).length
 
   return (
     <div className="min-h-screen bg-[#F0E9E6]">
@@ -83,7 +126,7 @@ export default function DashboardPage() {
           </div>
           <div className="glass-card p-5">
             <p className="text-sm text-[#002F61]/60">Collected Today</p>
-            <p className="text-3xl font-bold text-[#002F61] mt-1">{collectedCount}</p>
+            <p className="text-3xl font-bold text-[#002F61] mt-1">{collectedTodayCount}</p>
           </div>
         </div>
 
@@ -170,6 +213,16 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))
+          )}
+
+          {/* Load More */}
+          {!search && hasMore && !loading && (
+            <button
+              onClick={loadMore}
+              className="w-full py-3 border border-[#002F61]/20 text-[#002F61]/60 font-medium rounded-xl hover:bg-[#002F61]/5 transition text-sm"
+            >
+              Load More
+            </button>
           )}
         </div>
       </div>
